@@ -5,35 +5,21 @@
   connection: network_cli
   vars:
     ansible_network_os: cisco.ios.ios
+    # The commands you enter in the AWX Survey
     manual_ssh_input: ""
 
-    ansible_command_timeout: 60 
-    ansible_connect_timeout: 60
-
   tasks:
-    - name: 1. Set Terminal Length to Infinite
+    - name: Execute CLI Commands
       cisco.ios.ios_command:
-        commands: "terminal length 0"
-
-    - name: 2. Execute Manual CLI Input
-      ansible.netcommon.cli_command:
-        command: "{{ item }}"
-      loop: "{{ manual_ssh_input.split('\n') | select('regex', '\\S') | list }}"
-      register: ssh_results
+        commands: 
+          - terminal length 0
+          # We join all your lines into a list for the module
+          - "{{ manual_ssh_input.split('\n') | select('regex', '\\S') | list }}"
+      register: raw_output
       when: manual_ssh_input | trim | length > 0
-      ignore_errors: yes
 
-    - name: 3. View Console Output
+    - name: View Raw Console Output
       ansible.builtin.debug:
-        msg: |
-          [ SSH CONSOLE SESSION: {{ inventory_hostname }} ]
-          {% if ssh_results.results is defined %}
-          {% for result in ssh_results.results %}
-          {{ inventory_hostname }}# {{ result.item }}
-          {{ result.stdout }}
-          {% endfor %}
-          {% else %}
-          [!] NO COMMANDS EXECUTED
-          {% endif %}
-          [ SESSION END ]
-      when: manual_ssh_input | trim | length > 0
+        msg: "{{ item }}"
+      loop: "{{ raw_output.stdout_lines | flatten }}"
+      when: raw_output.stdout_lines is defined
