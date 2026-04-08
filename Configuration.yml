@@ -5,21 +5,30 @@
   connection: network_cli
   vars:
     ansible_network_os: cisco.ios.ios
-    # The commands you enter in the AWX Survey
     manual_ssh_input: ""
 
   tasks:
-    - name: Execute CLI Commands
-      cisco.ios.ios_command:
-        commands: 
-          - terminal length 0
-          # We join all your lines into a list for the module
-          - "{{ manual_ssh_input.split('\n') | select('regex', '\\S') | list }}"
-      register: raw_output
-      when: manual_ssh_input | trim | length > 0
-
-    - name: View Raw Console Output
+    - name: 1. Execute Manual CLI Input
+      ansible.netcommon.cli_command:  # a ansible.netcommon collection used here to send raw CLI commands to the network device
+        command: "{{ item }}"
+      loop: "{{ manual_ssh_input.split('\n') | select('regex', '\\S') | list }}" # split it into linres and removes empty lines
+      register: ssh_results
+      when: manual_ssh_input | trim | length > 0  # only execute this when the input is available and also trimmed
+      ignore_errors: yes
+    - name: 2. View Console Output
       ansible.builtin.debug:
-        msg: "{{ item }}"
-      loop: "{{ raw_output.stdout_lines | flatten }}"
-      when: raw_output.stdout_lines is defined
+        msg: |
+              
+              [ SSH CONSOLE SESSION: {{ inventory_hostname }} ]
+              {% if ssh_results.results is defined %}
+              {% for result in ssh_results.results %}
+              {{ inventory_hostname }}# {{ result.item }}
+              {{ result.stdout }}
+              
+              {% endfor %}
+              {% else %}
+              [!] NO COMMANDS EXECUTED
+              {% endif %}
+              [ SESSION END ]
+              └────────────────────────────────────────────────────────────────────────┘
+      when: manual_ssh_input | trim | length > 0
