@@ -1,0 +1,66 @@
+---
+- name: Backup Router Configuration Test
+  hosts: switches
+  gather_facts: false
+  connection: network_cli
+
+  vars:
+    ansible_network_os: cisco.ios.ios
+    git_repo_path: "/tmp/router-automation"
+    git_clone_url: "https://{{ github_token }}@github.com/coderun23-cloud/Switch_Automation.git"
+    timestamp: "{{ lookup('pipe', 'date +%Y-%m-%d_%H%M%S') }}"
+
+  tasks:
+
+    # ---------------------------------------------------------
+    # 1. GET RUNNING CONFIG (THIS ALWAYS WORKS)
+    # ---------------------------------------------------------
+    - name: Get running configuration
+      cisco.ios.ios_command:
+        commands:
+          - show running-config
+      register: run_config
+
+    # ---------------------------------------------------------
+    # 2. CLONE REPO
+    # ---------------------------------------------------------
+    - name: Clone GitHub repository
+      ansible.builtin.git:
+        repo: "{{ git_clone_url }}"
+        dest: "{{ git_repo_path }}"
+        version: main
+        force: yes
+      delegate_to: localhost
+      run_once: true
+
+    # ---------------------------------------------------------
+    # 3. WRITE BACKUP DIRECTLY INTO THE REPO
+    # ---------------------------------------------------------
+    - name: Save backup directly inside GitHub repo
+      ansible.builtin.copy:
+        dest: "{{ git_repo_path }}/backup_{{ inventory_hostname }}_{{ timestamp }}.cfg"
+        content: "{{ run_config.stdout[0] }}"
+      delegate_to: localhost
+
+    # ---------------------------------------------------------
+    # 4. COMMIT & PUSH
+    # ---------------------------------------------------------
+    - name: Commit & Push to GitHub
+      ansible.builtin.shell: |
+        cd {{ git_repo_path }}
+        git config user.name "AWX Automation Bot"
+        git config user.email "awx@automation.local"
+        git add .
+        if [ -n "$(git status --porcelain)" ]; then
+          git commit -m "Router Backup {{ inventory_hostname }} - {{ timestamp }}"
+          git push origin main
+        fi
+      delegate_to: localhost
+      run_once: true
+
+    # ---------------------------------------------------------
+    # 5. OUTPUT
+    # ---------------------------------------------------------
+    - name: Done
+      ansible.builtin.debug:
+        msg: "Backup completed and pushed to GitHub."
