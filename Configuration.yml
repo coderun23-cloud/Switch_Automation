@@ -7,28 +7,33 @@
     ansible_network_os: cisco.ios.ios
     manual_ssh_input: ""
 
+    ansible_command_timeout: 60 
+    ansible_connect_timeout: 60
+
   tasks:
-    - name: 1. Execute Manual CLI Input
-      ansible.netcommon.cli_command:  # a ansible.netcommon collection used here to send raw CLI commands to the network device
+    - name: 1. Set Terminal Length to Infinite
+      cisco.ios.ios_command:
+        commands: "terminal length 0"
+
+    - name: 2. Execute Manual CLI Input
+      ansible.netcommon.cli_command:
         command: "{{ item }}"
-      loop: "{{ manual_ssh_input.split('\n') | select('regex', '\\S') | list }}" # split it into linres and removes empty lines
+      loop: "{{ manual_ssh_input.split('\n') | select('regex', '\\S') | list }}"
       register: ssh_results
-      when: manual_ssh_input | trim | length > 0  # only execute this when the input is available and also trimmed
+      when: manual_ssh_input | trim | length > 0
       ignore_errors: yes
-    - name: 2. View Console Output
+
+    - name: 3. View Console Output
       ansible.builtin.debug:
         msg: |
-              
-              [ SSH CONSOLE SESSION: {{ inventory_hostname }} ]
-              {% if ssh_results.results is defined %}
-              {% for result in ssh_results.results %}
-              {{ inventory_hostname }}# {{ result.item }}
-              {{ result.stdout }}
-              
-              {% endfor %}
-              {% else %}
-              [!] NO COMMANDS EXECUTED
-              {% endif %}
-              [ SESSION END ]
-              └────────────────────────────────────────────────────────────────────────┘
+          [ SSH CONSOLE SESSION: {{ inventory_hostname }} ]
+          {% if ssh_results.results is defined %}
+          {% for result in ssh_results.results %}
+          {{ inventory_hostname }}# {{ result.item }}
+          {{ result.stdout }}
+          {% endfor %}
+          {% else %}
+          [!] NO COMMANDS EXECUTED
+          {% endif %}
+          [ SESSION END ]
       when: manual_ssh_input | trim | length > 0
