@@ -9,35 +9,20 @@
     manual_ssh_input: ""
 
   tasks:
-
-    - name: Prepare terminal for full output
+    - name: 1. Prepare terminal and Execute Commands
       ansible.netcommon.cli_command:
-        commands:
-          - terminal length 0
-          - terminal width 0
-
-    - name: Execute Manual CLI Input
-      ansible.netcommon.cli_command:
+        # Fixed: using 'command' instead of 'commands'
+        # We inject 'terminal length 0' to ensure no pagination pauses
         command: "{{ item }}"
-      loop: "{{ manual_ssh_input.split('\n') | select('regex', '\\S') | list }}"
+      loop: "{{ (['terminal length 0', 'terminal width 0'] + manual_ssh_input.split('\n')) | select('regex', '\\S') | list }}"
       register: ssh_results
       when: manual_ssh_input | trim | length > 0
+      ignore_errors: yes
 
-    - name: Display full console output
+    - name: 2. Stream Console Output
       ansible.builtin.debug:
-        msg: |
-          ┌─────────────────────────────────────────────────────────────┐
-          │ SSH CONSOLE SESSION: {{ inventory_hostname }}
-          └─────────────────────────────────────────────────────────────┘
-          {% for result in ssh_results.results %}
-          {{ inventory_hostname }}# {{ result.item }}
-          {% if result.stdout_lines is defined %}
-          {% for line in result.stdout_lines %}
-          {{ line }}
-          {% endfor %}
-          {% endif %}
-
-          {% endfor %}
-          ───────────────────────────────────────────────────────────────
-          [ SESSION END ]
-      when: manual_ssh_input | trim | length > 0
+        msg: "{{ line }}"
+      # This 'flatten' is the secret: it breaks the output into individual lines 
+      # so AWX doesn't truncate a giant JSON block.
+      loop: "{{ ssh_results.results | map(attribute='stdout_lines') | default([]) | flatten }}"
+      when: ssh_results.results is defined
