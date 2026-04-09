@@ -1,0 +1,22 @@
+---
+- name: Enforce Golden Hostname
+  hosts: switches
+  gather_facts: no
+  connection: network_cli
+
+  vars:
+    # This is your "Desired State" / Golden Config
+    golden_hostname: "EOB-Basement-062272-3560"
+
+  tasks:
+    - name: Ensure Hostname matches the Golden Standard
+      cisco.ios.ios_hostname:
+        config:
+          hostname: "{{ golden_hostname }}"
+        state: merged
+      register: hostname_result
+
+    - name: Report if drift was detected
+      ansible.builtin.debug:
+        msg: "ALERT: Manual change detected! Reverting hostname back to {{ golden_hostname }}"
+      when: hostname_result.changed
