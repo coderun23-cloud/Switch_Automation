@@ -1,29 +1,34 @@
 ---
-- name: Cisco Manual SSH Portal (Full Output)
+- name: Cisco Manual SSH Portal (DNAC Style)
   hosts: switches
   gather_facts: no
   connection: network_cli
-
   vars:
     ansible_network_os: cisco.ios.ios
     manual_ssh_input: ""
 
   tasks:
-
-    - name: Prepare terminal for full output
-      ansible.netcommon.cli_command:
+    - name: 1. Execute Manual CLI Input
+      ansible.netcommon.cli_command:  # a ansible.netcommon collection used here to send raw CLI commands to the network device
         command: "{{ item }}"
-      loop:
-        - terminal length 0
-        - terminal width 0
-
-    - name: Apply configuration commands
-      cisco.ios.ios_config:
-        lines: "{{ manual_ssh_input.split('\n') | select('regex', '\\S') | list }}"
-      register: config_results
-      when: manual_ssh_input | trim | length > 0
-
-    - name: Display applied configuration
-      debug:
-        var: config_results
+      loop: "{{ manual_ssh_input.split('\n') | select('regex', '\\S') | list }}" # split it into linres and removes empty lines
+      register: ssh_results
+      when: manual_ssh_input | trim | length > 0  # only execute this when the input is available and also trimmed
+      ignore_errors: yes
+    - name: 2. View Console Output
+      ansible.builtin.debug:
+        msg: |
+              
+              [ SSH CONSOLE SESSION: {{ inventory_hostname }} ]
+              {% if ssh_results.results is defined %}
+              {% for result in ssh_results.results %}
+              {{ inventory_hostname }}# {{ result.item }}
+              {{ result.stdout }}
+              
+              {% endfor %}
+              {% else %}
+              [!] NO COMMANDS EXECUTED
+              {% endif %}
+              [ SESSION END ]
+              └────────────────────────────────────────────────────────────────────────┘
       when: manual_ssh_input | trim | length > 0
