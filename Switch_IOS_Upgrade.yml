@@ -1,0 +1,88 @@
+---
+- name: "🚀 IOS-XE Smart Upgrade via TFTP"
+  hosts: switches
+  gather_facts: false
+  connection: network_cli
+  
+  vars:
+    ansible_network_os: ios
+  
+  vars_files:
+    - vars/ios_upgrade.yml
+
+  tasks:
+    - name: "🔍 0. Check Current Version"
+      ios_command:
+        commands: "show version | include Version"
+      register: current_version_output
+
+    - name: "📊 1. Check available flash space"
+      ios_command:
+        commands: "dir bootflash:"
+      register: flash_output
+      # We only care about space if we actually need to upgrade
+      when: ios_image not in current_version_output.stdout[0]
+
+    - name: "📝 2. Backup running configuration"
+      ios_config:
+        backup: yes
+      when: ios_image not in current_version_output.stdout[0]
+
+    - name: "📥 3. Copy IOS image (Only if version mismatch)"
+      cli_command:
+        command: "copy tftp: bootflash:{{ ios_image }}"
+        check_all: True
+        prompt:
+          - "Address or name of remote host"
+          - "Source filename"
+          - "Destination filename"
+        answer:
+          - "{{ tftp_server }}"
+          - "{{ ios_image }}"
+          - "\r"
+      vars:
+        ansible_command_timeout: 1200
+      # SKIP if the version string is already found in 'show version'
+      when: ios_image not in current_version_output.stdout[0]
+
+    - name: "⚙️ 4. Configure boot variable"
+      ios_config:
+        lines:
+          - "default boot system"
+          - "boot system bootflash:{{ ios_image }}"
+        save_when: always
+      when: ios_image not in current_version_output.stdout[0]
+
+    - name: "💾 5. Save configuration"
+      ios_command:
+        commands: "write memory"
+      when: ios_image not in current_version_output.stdout[0]
+
+    - name: "🔄 6. Reload router (Only if upgraded)"
+      cli_command:
+        command: "reload"
+        prompt: "Proceed with reload"
+        answer: "\r"
+      ignore_errors: true
+      when: ios_image not in current_version_output.stdout[0]
+
+    - name: "🕒 7. Wait for router to come back"
+      wait_for:
+        host: "{{ inventory_hostname }}"
+        port: 22
+        delay: 60
+        timeout: 900
+      delegate_to: localhost
+      # Only wait if we actually triggered a reload
+      when: ios_image not in current_version_output.stdout[0]
+
+    - name: "✅ 8. Final Version Verification"
+      ios_command:
+        commands: "show version | include Version"
+      register: final_version
+
+    - name: "🏁 Display Upgrade Summary"
+      debug:
+        msg: 
+          - "Status: Upgrade process finished."
+          - "Current Version: {{ final_version.stdout[0] }}"
