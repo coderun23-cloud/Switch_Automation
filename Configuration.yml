@@ -12,9 +12,10 @@
 
     - name: Prepare terminal for full output
       ansible.netcommon.cli_command:
-        commands:
-          - terminal length 0
-          - terminal width 0
+        command: "{{ item }}"
+      loop:
+        - terminal length 0
+        - terminal width 0
 
     - name: Apply configuration commands
       cisco.ios.ios_config:
